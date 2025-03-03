@@ -4,6 +4,45 @@ import { db, admin } from "../config/firebase.js";
 import { cleanObject } from "../utils/cleanObject.js";
 
 // ✅ Fetch all products (with filtering)
+// export const getAllProducts = async (req, res) => {
+//   try {
+//     let query = db.collection("products");
+//     const { category, minPrice, maxPrice } = req.query;
+
+//     // Convert minPrice and maxPrice to numbers
+//     const min = minPrice ? parseFloat(minPrice) : null;
+//     const max = maxPrice ? parseFloat(maxPrice) : null;
+
+//     if (category) {
+//       query = query.where("category", "==", category.toLowerCase());
+//     }
+//     if (min !== null && max !== null) {
+//       // Firestore doesn't allow two different range filters unless indexed.
+//       query = query.where("price", ">=", min).where("price", "<=", max);
+//     } else if (min !== null) {
+//       query = query.where("price", ">=", min);
+//     } else if (max !== null) {
+//       query = query.where("price", "<=", max);
+//     }
+
+//     const snapshot = await query.get();
+
+//     if (snapshot.empty) {
+//       return res.status(200).json([]);
+//     }
+
+//     const products = snapshot.docs.map((doc) => ({
+//       id: doc.id,
+//       ...doc.data(),
+//     }));
+
+//     res.status(200).json(products);
+//   } catch (error) {
+//     console.error("🔥 Error fetching products:", error);
+//     res.status(500).json({ error: "Failed to fetch products" });
+//   }
+// };
+
 export const getAllProducts = async (req, res) => {
   try {
     let query = db.collection("products");
@@ -14,10 +53,10 @@ export const getAllProducts = async (req, res) => {
     const max = maxPrice ? parseFloat(maxPrice) : null;
 
     if (category) {
-      query = query.where("category", "==", category.toLowerCase());
+      query = query.where("category", "==", category.trim().toLowerCase());
     }
+
     if (min !== null && max !== null) {
-      // Firestore doesn't allow two different range filters unless indexed.
       query = query.where("price", ">=", min).where("price", "<=", max);
     } else if (min !== null) {
       query = query.where("price", ">=", min);
