@@ -9,10 +9,6 @@ export const getAllProducts = async (req, res) => {
     let query = db.collection("products");
     const { category, minPrice, maxPrice } = req.query;
 
-    console.log(`💥 > getAllProducts > minPrice:`, minPrice);
-    console.log(`💥 > getAllProducts > category:`, category);
-    console.log(`💥 > getAllProducts > maxPrice:`, maxPrice);
-
     // Convert minPrice and maxPrice to numbers
     const min = minPrice ? parseFloat(minPrice) : null;
     const max = maxPrice ? parseFloat(maxPrice) : null;
@@ -32,7 +28,6 @@ export const getAllProducts = async (req, res) => {
     const snapshot = await query.get();
 
     if (snapshot.empty) {
-      console.log("❌ No products found matching the criteria.");
       return res.status(200).json([]);
     }
 
@@ -41,7 +36,6 @@ export const getAllProducts = async (req, res) => {
       ...doc.data(),
     }));
 
-    console.log(`✅ Found ${products.length} products`, products);
     res.status(200).json(products);
   } catch (error) {
     console.error("🔥 Error fetching products:", error);

@@ -14,12 +14,10 @@ export const authenticateUser = async (req, res) => {
 
     // Verify Firebase ID Token
     const decodedToken = await admin.auth().verifyIdToken(token);
-    console.log(`💥 > authenticateUser > decodedToken--->`, decodedToken);
     const userId = decodedToken.uid;
 
     // Check if user exists in Firestore
     const userDoc = await db.collection("users").doc(userId).get();
-    console.log(`💥 > authenticateUser > userDoc--->`, userDoc);
 
     if (!userDoc.exists) {
       const newUser = {
