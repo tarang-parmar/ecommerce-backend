@@ -1,61 +1,90 @@
-// /src/controllers/cartController.js
-
 import { db } from "../config/firebase.js";
 
-// ✅ Add product to cart
+// ✅ Add product to cart (ensures stock availability)
 export const addToCart = async (req, res) => {
   try {
-    const { productId, quantity } = req.body;
-    const userId = req.user.uid; // Authenticated user's ID
+    const { productId, quantity = 1 } = req.body;
+    const userId = req.user.uid;
 
-    if (!productId || quantity <= 0) {
+    if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
       return res.status(400).json({ error: "Invalid product or quantity" });
     }
 
+    // Fetch product details
+    const productRef = db.collection("products").doc(productId);
+    const productSnapshot = await productRef.get();
+
+    if (!productSnapshot.exists) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    const productData = productSnapshot.data();
+    const availableQuantity = productData.quantity || 0; // Default to 0 if missing
+
+    if (availableQuantity < quantity) {
+      return res.status(400).json({ error: "Not enough stock available" });
+    }
+
+    // Fetch user's cart
     const cartRef = db.collection("carts").doc(userId);
     const cartSnapshot = await cartRef.get();
-
     let cartData = cartSnapshot.exists ? cartSnapshot.data() : { items: [] };
 
-    // Check if the product already exists in the cart
-    const existingProductIndex = cartData.items.findIndex(
+    const existingProduct = cartData.items.find(
       (item) => item.productId === productId
     );
 
-    if (existingProductIndex !== -1) {
-      // Update quantity if product exists
-      cartData.items[existingProductIndex].quantity += quantity;
+    if (existingProduct) {
+      const newQuantity = existingProduct.quantity + quantity;
+      if (newQuantity > availableQuantity) {
+        return res.status(400).json({ error: "Exceeds available stock" });
+      }
+      existingProduct.quantity = newQuantity;
     } else {
-      // Add new product
       cartData.items.push({ productId, quantity });
     }
 
     await cartRef.set(cartData, { merge: true });
+
     res.status(200).json({ message: "Product added to cart", cart: cartData });
   } catch (error) {
     res.status(500).json({ error: "Failed to add to cart" });
   }
 };
 
-// ✅ Get user's cart
+// ✅ Get user's cart (filters invalid items)
 export const getCart = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const cartSnapshot = await db.collection("carts").doc(userId).get();
+    const cartRef = db.collection("carts").doc(userId);
+    const cartSnapshot = await cartRef.get();
 
-    res
-      .status(200)
-      .json(cartSnapshot.exists ? cartSnapshot.data() : { items: [] });
+    if (!cartSnapshot.exists) {
+      return res.status(200).json({ items: [] });
+    }
+
+    let cartData = cartSnapshot.data();
+
+    // Remove invalid items (NaN or <= 0 quantity)
+    cartData.items = cartData.items.filter(
+      (item) => Number.isFinite(item.quantity) && item.quantity > 0
+    );
+
+    res.status(200).json(cartData);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch cart" });
   }
 };
 
-// ✅ Remove product from cart
+// ✅ Remove product from cart (decrements quantity or removes item)
 export const removeFromCart = async (req, res) => {
   try {
-    const { productId } = req.body;
+    const { productId, quantity = 1 } = req.body;
     const userId = req.user.uid;
+
+    if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
+      return res.status(400).json({ error: "Invalid product or quantity" });
+    }
 
     const cartRef = db.collection("carts").doc(userId);
     const cartSnapshot = await cartRef.get();
@@ -66,7 +95,7 @@ export const removeFromCart = async (req, res) => {
 
     let cartData = cartSnapshot.data();
 
-    // Find index of the product to remove
+    // Find product in cart
     const itemIndex = cartData.items.findIndex(
       (item) => item.productId === productId
     );
@@ -75,16 +104,33 @@ export const removeFromCart = async (req, res) => {
       return res.status(404).json({ error: "Product not found in cart" });
     }
 
-    // Remove the product at the found index
-    cartData.items.splice(itemIndex, 1);
+    // Decrease the quantity or remove if it's 0
+    cartData.items[itemIndex].quantity -= quantity;
 
-    // Update only the `items` field in Firestore
+    if (cartData.items[itemIndex].quantity <= 0) {
+      cartData.items.splice(itemIndex, 1);
+    }
+
     await cartRef.update({ items: cartData.items });
 
     res
       .status(200)
-      .json({ message: "Product removed from cart", cart: cartData });
+      .json({ message: "Product updated in cart", cart: cartData });
   } catch (error) {
-    res.status(500).json({ error: "Failed to remove product from cart" });
+    res.status(500).json({ error: "Failed to update cart" });
+  }
+};
+
+// ✅ Clear cart (removes all items)
+export const clearCart = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const cartRef = db.collection("carts").doc(userId);
+
+    await cartRef.delete();
+
+    res.status(200).json({ message: "Cart cleared" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to clear cart" });
   }
 };
