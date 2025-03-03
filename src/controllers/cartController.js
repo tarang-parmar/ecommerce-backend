@@ -1,3 +1,5 @@
+// /src/controllers/cartController.js
+
 import { db } from "../config/firebase.js";
 
 // ✅ Add product to cart (ensures stock availability)
@@ -65,12 +67,30 @@ export const getCart = async (req, res) => {
 
     let cartData = cartSnapshot.data();
 
-    // Remove invalid items (NaN or <= 0 quantity)
+    // Remove invalid items (NaN or quantity <= 0)
     cartData.items = cartData.items.filter(
       (item) => Number.isFinite(item.quantity) && item.quantity > 0
     );
 
-    res.status(200).json(cartData);
+    // Fetch product details for each item
+    const productPromises = cartData.items.map(async (item) => {
+      const productRef = db.collection("products").doc(item.productId);
+      const productSnapshot = await productRef.get();
+
+      if (!productSnapshot.exists) return null; // Skip if product not found
+
+      return {
+        ...productSnapshot.data(), // Include product details
+        quantity: item.quantity, // Keep user's selected quantity
+      };
+    });
+
+    // Resolve all product fetches
+    const cartWithDetails = (await Promise.all(productPromises)).filter(
+      Boolean
+    );
+
+    res.status(200).json({ items: cartWithDetails });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch cart" });
   }
