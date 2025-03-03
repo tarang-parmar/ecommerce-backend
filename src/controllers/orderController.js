@@ -57,12 +57,41 @@ export const getOrders = async (req, res) => {
       .where("userId", "==", userId)
       .get();
 
-    const orders = orderSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    if (orderSnapshot.empty) {
+      return res.status(200).json({ orders: [] });
+    }
 
-    res.status(200).json(orders);
+    const orders = await Promise.all(
+      orderSnapshot.docs.map(async (doc) => {
+        let orderData = doc.data();
+
+        // Fetch product details for each item
+        const productPromises = orderData.items.map(async (item) => {
+          const productRef = db.collection("products").doc(item.productId);
+          const productSnapshot = await productRef.get();
+
+          if (!productSnapshot.exists) return null; // Skip if product not found
+
+          return {
+            ...productSnapshot.data(), // Include full product details
+            quantity: item.quantity, // Keep the ordered quantity
+          };
+        });
+
+        // Resolve all product fetches and filter out null values
+        const itemsWithDetails = (await Promise.all(productPromises)).filter(
+          Boolean
+        );
+
+        return {
+          id: doc.id,
+          ...orderData,
+          items: itemsWithDetails, // Replace items with full product details
+        };
+      })
+    );
+
+    res.status(200).json({ orders });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch orders" });
   }
