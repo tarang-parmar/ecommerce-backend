@@ -3,6 +3,50 @@
 import { db } from "../config/firebase.js";
 
 // ✅ Checkout & place order
+// export const checkout = async (req, res) => {
+//   try {
+//     const userId = req.user.uid;
+//     const { address, paymentMethod } = req.body;
+
+//     if (!address || !paymentMethod) {
+//       return res
+//         .status(400)
+//         .json({ error: "Address and payment method are required" });
+//     }
+
+//     // Fetch user's cart
+//     const cartRef = db.collection("carts").doc(userId);
+//     const cartSnapshot = await cartRef.get();
+
+//     if (!cartSnapshot.exists || cartSnapshot.data().items.length === 0) {
+//       return res.status(400).json({ error: "Cart is empty" });
+//     }
+
+//     const cartData = cartSnapshot.data();
+//     const orderData = {
+//       userId,
+//       items: cartData.items,
+//       address,
+//       paymentMethod,
+//       status: "Pending",
+//       createdAt: new Date().toISOString(),
+//     };
+
+//     // Store order
+//     const orderRef = await db.collection("orders").add(orderData);
+
+//     // Clear the cart after checkout
+//     await cartRef.delete();
+
+//     res.status(200).json({
+//       message: "Order placed",
+//       orderId: orderRef.id,
+//       order: orderData,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: "Failed to place order" });
+//   }
+// };
 export const checkout = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -23,23 +67,58 @@ export const checkout = async (req, res) => {
     }
 
     const cartData = cartSnapshot.data();
+    const cartItems = cartData.items;
+
+    // Firestore batch operation to handle stock updates atomically
+    const batch = db.batch();
+
+    // Check product availability and prepare stock updates
+    for (const cartItem of cartItems) {
+      const productRef = db.collection("products").doc(cartItem.productId);
+      const productSnapshot = await productRef.get();
+
+      if (!productSnapshot.exists) {
+        return res
+          .status(400)
+          .json({ error: `Product ${cartItem.productId} not found` });
+      }
+
+      const productData = productSnapshot.data();
+
+      if (productData.quantity < cartItem.quantity) {
+        return res
+          .status(400)
+          .json({ error: `Not enough stock for ${productData.name}` });
+      }
+
+      // Deduct quantity
+      batch.update(productRef, {
+        quantity: productData.quantity - cartItem.quantity,
+      });
+    }
+
+    // Create order data
     const orderData = {
       userId,
-      items: cartData.items,
+      items: cartItems,
       address,
       paymentMethod,
       status: "Pending",
       createdAt: new Date().toISOString(),
     };
 
-    // Store order
-    const orderRef = await db.collection("orders").add(orderData);
+    // Add order to database
+    const orderRef = db.collection("orders").doc();
+    batch.set(orderRef, orderData);
 
     // Clear the cart after checkout
-    await cartRef.delete();
+    batch.delete(cartRef);
+
+    // Commit batch operation
+    await batch.commit();
 
     res.status(200).json({
-      message: "Order placed",
+      message: "Order placed successfully",
       orderId: orderRef.id,
       order: orderData,
     });

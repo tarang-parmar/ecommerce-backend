@@ -80,6 +80,7 @@ export const getCart = async (req, res) => {
       if (!productSnapshot.exists) return null; // Skip if product not found
 
       return {
+        id: productSnapshot.id, // ✅ Add product ID here
         ...productSnapshot.data(), // Include product details
         quantity: item.quantity, // Keep user's selected quantity
       };
@@ -92,6 +93,7 @@ export const getCart = async (req, res) => {
 
     res.status(200).json({ items: cartWithDetails });
   } catch (error) {
+    console.error("🔥 Error fetching cart:", error);
     res.status(500).json({ error: "Failed to fetch cart" });
   }
 };
